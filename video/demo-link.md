@@ -3,7 +3,7 @@
 ## Link
 
 > **[Insert video URL here]**  
-> Example: `https://drive.google.com/file/d/XXXXXXXXXXXX/view?usp=sharing`
+https://drive.google.com/drive/folders/1iFRe3E5D0jxdbZU12_XBf4b-0eJPy7zD?usp=sharing
 
 ---
 
