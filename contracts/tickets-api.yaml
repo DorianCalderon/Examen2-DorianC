@@ -1,0 +1,437 @@
+openapi: 3.0.3
+
+info:
+  title: Panini FIFA World Cup 2026 — Ticket Support API
+  description: >
+    REST API contract for the distributor support ticket system.
+    Covers authentication and full ticket lifecycle management.
+  version: 1.0.0
+  contact:
+    name: Panini Support Engineering
+    email: support-dev@panini.com
+
+servers:
+  - url: https://api.panini-support.com/v1
+    description: Production
+  - url: https://staging-api.panini-support.com/v1
+    description: Staging
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
+securitySchemes: {}
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  # -------------------------------------------------------------------------
+  # Reusable schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    # -- Enumerations --------------------------------------------------------
+
+    Priority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, CRITICAL]
+      description: Urgency level of the support ticket.
+
+    TicketStatus:
+      type: string
+      enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
+      description: Current lifecycle state of the ticket.
+
+    Category:
+      type: string
+      enum: [INVENTORY, LOGISTICS, DISTRIBUTION, SUPPLIER, OTHER]
+      description: Business area the ticket belongs to.
+
+    # -- Core entities -------------------------------------------------------
+
+    Ticket:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - priority
+        - status
+        - provider
+        - createdAt
+        - category
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        title:
+          type: string
+          maxLength: 120
+          example: "Missing stickers batch — Region Norte"
+        description:
+          type: string
+          maxLength: 2000
+          example: "Distributor reports 3 boxes from shipment #20260301 arrived unsealed."
+        priority:
+          $ref: '#/components/schemas/Priority'
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        provider:
+          type: string
+          example: "Distribuidora El Álamo S.A."
+        createdAt:
+          type: string
+          format: date-time
+          example: "2026-03-15T09:32:00Z"
+        category:
+          $ref: '#/components/schemas/Category'
+
+    # -- Request bodies ------------------------------------------------------
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+          example: "dorian.calderon"
+        password:
+          type: string
+          format: password
+          example: "s3cur3P@ss"
+
+    CreateTicketRequest:
+      type: object
+      required: [title, description, priority, provider, category]
+      properties:
+        title:
+          type: string
+          maxLength: 120
+          example: "Damaged album covers — Batch 77B"
+        description:
+          type: string
+          maxLength: 2000
+          example: "150 albums received with printing defects on covers."
+        priority:
+          $ref: '#/components/schemas/Priority'
+        provider:
+          type: string
+          example: "Editorial Poch S.L."
+        category:
+          $ref: '#/components/schemas/Category'
+
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+
+    UpdatePriorityRequest:
+      type: object
+      required: [priority]
+      properties:
+        priority:
+          $ref: '#/components/schemas/Priority'
+
+    # -- Response wrappers ---------------------------------------------------
+
+    LoginResponse:
+      type: object
+      required: [token, userId]
+      properties:
+        token:
+          type: string
+          description: JWT bearer token for subsequent requests.
+          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        userId:
+          type: string
+          format: uuid
+          example: "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+
+    TicketResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Ticket'
+
+    TicketListResponse:
+      type: object
+      required: [success, data]
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Ticket'
+
+    # -- Error ---------------------------------------------------------------
+
+    ErrorResponse:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: "TICKET_NOT_FOUND"
+            message:
+              type: string
+              example: "No ticket found with the provided id."
+
+  # -------------------------------------------------------------------------
+  # Reusable responses
+  # -------------------------------------------------------------------------
+  responses:
+
+    BadRequest:
+      description: The request body or parameters failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Field 'priority' must be one of LOW, MEDIUM, HIGH, CRITICAL."
+
+    Unauthorized:
+      description: Missing or invalid JWT token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "Authentication token is missing or expired."
+
+    InternalServerError:
+      description: An unexpected server-side error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "An unexpected error occurred. Please try again later."
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # --------------------------------------------------------------------------
+  # 1. Authentication
+  # --------------------------------------------------------------------------
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate a distributor or support agent and obtain a JWT token.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful. Returns a bearer token and user identifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                error:
+                  code: "INVALID_CREDENTIALS"
+                  message: "Username or password is incorrect."
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --------------------------------------------------------------------------
+  # 2. Ticket collection
+  # --------------------------------------------------------------------------
+  /tickets:
+    get:
+      tags: [Tickets]
+      summary: Retrieve the full list of support tickets for the authenticated user.
+      operationId: listTickets
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Ticket list returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags: [Tickets]
+      summary: Open a new support ticket for a distribution issue.
+      operationId: createTicket
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTicketRequest'
+      responses:
+        '200':
+          description: Ticket created successfully. Returns the persisted ticket with server-assigned fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --------------------------------------------------------------------------
+  # 3. Ticket detail
+  # --------------------------------------------------------------------------
+  /tickets/{id}:
+    get:
+      tags: [Tickets]
+      summary: Retrieve the full detail of a single ticket by its identifier.
+      operationId: getTicketById
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the ticket.
+      responses:
+        '200':
+          description: Ticket detail returned successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --------------------------------------------------------------------------
+  # 4. Update ticket status
+  # --------------------------------------------------------------------------
+  /tickets/{id}/status:
+    patch:
+      tags: [Tickets]
+      summary: Transition a ticket to a new lifecycle status.
+      operationId: updateTicketStatus
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the ticket to update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        '200':
+          description: Status updated successfully. Returns the full updated ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # --------------------------------------------------------------------------
+  # 5. Update ticket priority
+  # --------------------------------------------------------------------------
+  /tickets/{id}/priority:
+    patch:
+      tags: [Tickets]
+      summary: Change the priority level of an existing ticket.
+      operationId: updateTicketPriority
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Unique identifier of the ticket to update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePriorityRequest'
+      responses:
+        '200':
+          description: Priority updated successfully. Returns the full updated ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
