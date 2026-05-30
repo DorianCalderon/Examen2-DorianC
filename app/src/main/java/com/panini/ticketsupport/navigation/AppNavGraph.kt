@@ -59,6 +59,7 @@ fun AppNavGraph(
             val ticketId = backStackEntry.arguments?.getString("ticketId").orEmpty()
             TicketDetailScreen(
                 ticketId = ticketId,
+                onBack = { navController.navigateUp() },
                 viewModel = viewModel(factory = TicketDetailViewModel.factory(ticketId)),
             )
         }
